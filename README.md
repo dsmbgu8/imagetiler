@@ -1,7 +1,8 @@
 # imagetiler
 Python module to generate randomly selected image tiles from a set of images
 
-Example: extract 20 tiles of dims 500x500 pixels from each jpg image in ~/images and save the output tiles to the output_tiles directory, overwriting existing tiles if they exist, and printing verbose output:
+
+Example: use the demo.py script to extract 10 tiles of dims 250x250 pixels from each .jpg image in ~/hirisedata and save the output tiles to the ./tiles directory, while printing verbose output and overwriting existing tiles: 
 
 ```
 python demo.py -v -r -d 250 -n 10 -e .jpg ~/hirisedata ./tiles/
@@ -44,3 +45,5 @@ Loading image tile collections for 17 images
 imtile.tilecollection.load elapsed time: 65.009 seconds
 ESP_031059_1685_RED_A_01_ORTHO-crop+3300+12000: 10 tiles of shape (250, 250)
 ```
+
+For more information, peruse the demo.py script.
