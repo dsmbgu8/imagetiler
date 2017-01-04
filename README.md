@@ -46,4 +46,4 @@ imtile.tilecollection.load elapsed time: 65.009 seconds
 ESP_031059_1685_RED_A_01_ORTHO-crop+3300+12000: 10 tiles of shape (250, 250)
 ```
 
-For more information, peruse the demo.py script.
+For more information, peruse the [demo.py](https://github.com/dsmbgu8/imagetiler/blob/master/demo.py) script.
