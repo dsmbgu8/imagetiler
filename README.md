@@ -2,10 +2,10 @@
 Python module to generate randomly selected image tiles from a set of images
 
 
-Example: use the demo.py script to extract 10 tiles of dims 250x250 pixels from each .jpg image in ~/hirisedata and save the output tiles to the ./tiles directory, while printing verbose output and overwriting existing tiles: 
+Example: use the demo.py script to extract 10 tiles of dims 250x250 pixels from each .jpg image in ~/hirise_images/ and save the output tiles to the ./tiles directory, while printing verbose output and overwriting existing tiles: 
 
 ```
-python demo.py -v -r -d 250 -n 10 -e .jpg ~/hirisedata ./tiles/
+python demo.py -v -r -d 250 -n 10 -e .jpg ~/hirise_images/ ./tiles/
 ```
 
 ```
@@ -64,7 +64,7 @@ user@console:imagetiler$ ls tiles/ESP_027802_1685_RED_A_01_ORTHO/
 0.jpg       2.jpg       4.jpg       6.jpg       8.jpg       mask.jpg
 1.jpg       3.jpg       5.jpg       7.jpg       9.jpg       tilepos.txt
 
-user@console:imagetiler$ cat tiles/ESP_027802_1685_RED_A_01_ORTHO/tilepos.txt
+user@console:imagetiler$ cat tiles/ESP_027802_1685_RED_A_01_ORTHO/tileinfo.txt
 tileid row_start row_stop col_start col_stop percent_masked
 0 3490 3740 1620 1870 0.000
 1 5180 5430 7650 7900 0.000
