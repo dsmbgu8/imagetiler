@@ -40,12 +40,6 @@ class DefaultMasker:
     def __call__(self, img, **kwargs):
         return np.ones([img.shape[0],img.shape[1]],dtype=np.bool8)
     
-tileposf = 'tilepos.txt'
-tileposhdr = 'tileid row_start row_stop col_start col_stop percent_masked'
-def imslice2str(imslice):
-    """converts 2d image slice to formatted string"""
-    return ' '.join(['%d %d'%(si.start,si.stop) for si in imslice])
-
 def timeit(func):
     '''
     Decorator to time the invocation of a function
