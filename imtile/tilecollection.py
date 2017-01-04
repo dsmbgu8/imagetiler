@@ -28,7 +28,7 @@ class TileCollection:
         self.with_replacement=kwargs.pop('with_replacement',False)
 
         if not pathexists(self.outdir):
-            os.makedirs(outdir)
+            os.makedirs(self.outdir)
 
         self.tiles = {}
 
