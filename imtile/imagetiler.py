@@ -144,7 +144,7 @@ class ImageTiler:
                 outf = '%d%s'%(i,outext)
                 if overwrite or not pathexists(pathjoin(outdir,outf)):
                     savefunc(pathjoin(outdir,outf),tijimg)
-                    print('Wrote',outf,imslice2str(tij),'%4.3f'%tijmask,file=fid)
+                    print(outf,imslice2str(tij),'%4.3f'%tijmask,file=fid)
                 else:
                     print('Skipped',outf,'- file already exists')
         savefunc(pathjoin(outdir,'mask%s'%outext),self.mask.astype(np.uint8)*255)
