@@ -1,4 +1,4 @@
-# imgtiler
+# imagetiler
 Python module to generate randomly selected image tiles from a set of images
 
 Example: extract 20 tiles of dims 500x500 pixels from each jpg image in ~/images and save the output tiles to the output_tiles directory, overwriting existing tiles if they exist, and printing verbose output:
