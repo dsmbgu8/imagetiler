@@ -5,6 +5,15 @@ from .util import *
 from warnings import filterwarnings
 filterwarnings("ignore", message='.*is a low contrast image.*')
 
+tileinfof = 'tileinfo.txt'
+tileinfohdr = 'tileid row_start row_stop col_start col_stop percent_masked'
+def imslice2str(imslice):
+    """
+    converts 2d slice ((row_start,row_stop,None),(col_start,col_stop,None)) to
+    output string format='row_start row_stop col_start col_stop'
+    """
+    return ' '.join(['%d %d'%(si.start,si.stop) for si in imslice])
+
 class ImageTiler:
     """
     tilegen(imgshape,tiledim,mask=[],masked_reject=0.75)
@@ -114,8 +123,8 @@ class ImageTiler:
                 break
             if self.verbose:
                 if i==0:
-                    print(tileposhdr)
-                print('Tile',i,imslice2str(tij),'%4.3f'%tijmask)
+                    print(tileinfohdr)
+                print(i,imslice2str(tij),'%4.3f'%tijmask)
                 
             tiles.append(tij)
             percent_masked.append(tijmask)
@@ -137,14 +146,14 @@ class ImageTiler:
 
         tiles = self.collect()
         print('Writing',self.numtiles,'tiles to',outdir)
-        with open(pathjoin(outdir,tileposf),'w') as fid:
-            print(tileposhdr,file=fid)
+        with open(pathjoin(outdir,tileinfof),'w') as fid:
+            print(tileinfohdr,file=fid)
             for i,tij in enumerate(tiles):
                 tijimg,tijmask = self.img[tij],self.percent_masked[i]
                 outf = '%d%s'%(i,outext)
                 if overwrite or not pathexists(pathjoin(outdir,outf)):
                     savefunc(pathjoin(outdir,outf),tijimg)
-                    print(outf,imslice2str(tij),'%4.3f'%tijmask,file=fid)
+                    print(i,imslice2str(tij),'%4.3f'%tijmask,file=fid)
                 else:
                     print('Skipped',outf,'- file already exists')
         savefunc(pathjoin(outdir,'mask%s'%outext),self.mask.astype(np.uint8)*255)
