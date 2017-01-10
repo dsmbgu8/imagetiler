@@ -87,18 +87,15 @@ class MaskTiler:
         tijbest = None # 
         tijvalid = 0.0 # 
 
-        tr,tc = self.tilerows,self.tilecols
-        pr,pc = self.rowdim,self.coldim
         if len(self.pixrc)==0 or len(self.tileij)==0:
             warn('no pixel offsets defined, cannot proceed')
             return (tijbest, tijvalid)
         
         nsearch = 0
         pixrc  = list(self.pixrc)
+        # pick a random row/col pixel offset from our valid pixel list
         r,c = pixrc.pop(np.random.randint(len(pixrc)))            
         while nsearch <= self.maxsearch:
-            # pick a random row/col pixel offset from our valid pixel list
-
             tileij = list(self.tileij)
             # search tiles in random order for current pixel offset
             while tileij != []:
@@ -128,16 +125,17 @@ class MaskTiler:
                         msg = "Reinitializing mask (%5.3f%% pixel coverage)"%coverage
                         warn(msg)
                     self.mask = self.maskinit.copy()
+                    # pick a new offset to increase sampling diversity
+                    r,c = pixrc.pop(np.random.randint(len(pixrc)))
                     tijbest, tijvalid = None, 0.0
                     nsearch = 0
-                    r,c = pixrc.pop(np.random.randint(len(pixrc)))
                 else:
                     # found a good tile, mask if sampling wo replacement
                     if not self.with_replacement:
                         self.mask[tijbest] = False
                 break
 
-            # update either the row or the column, but not both
+            # randomly increment either the row or the column, but not both
             if np.random.rand() > 0.5:
                 rr = self.rowrange[np.random.randint(len(self.rowrange))]
                 r = (r+rr)%self.rowdim
@@ -150,6 +148,20 @@ class MaskTiler:
                     
         return (tijbest, tijvalid)
 
+    def __repr__(self):
+        ntiles = len(self.tiles)
+        outstr = ['%d tiles'%ntiles]
+        if ntiles == 0:
+            return outstr[0]
+        
+        outstr.append(tileinfohdr)
+        for i,tij in enumerate(self.tiles):
+            tijvalid = self.percent_valid[i]
+            tijpercent = tijvalid/self.ntilepix
+            outstr.append(str(i,tile2str(tij),'%4.3f'%tijpercent))
+                
+        return '\n'.join(outstr)
+    
     @timeit
     def collect(self):
         if self.tiles != []:
@@ -159,6 +171,7 @@ class MaskTiler:
         percent_valid = []
 
         if self.verbose:
+            print('Collecting tiles')
             print(tileinfohdr)
         for i in range(self.numtiles):
             tij,tijvalid = self.next()
@@ -184,18 +197,29 @@ class MaskTiler:
         overwrite = kwargs.pop('overwrite',False)
         outfile = None
         logmsg = [tileinfohdr]
-        figi = pl.figure()
-        axi = figi.add_subplot(111)
-        axi.imshow(img)
-        figm = pl.figure()
-        axm = figm.add_subplot(111)
-        axm.imshow(np.uint8(self.maskinit))        
         for i,tij in enumerate(self.tiles):
             tijid,tijslstr = 'tile%d'%i,tile2str(tij)
             tijimg,tijvalid = img[self.tiles[i]],self.percent_valid[i]
-            print(tijimg[:,:,0].min(),tijimg[:,:,0].max(),tijimg.shape)
             logmsg.append(' '.join([tijid,tijslstr,'%4.3f'%tijvalid]))
             savefunc(pathjoin(outdir,tijid),tijimg)
+
+        print('Saved',self.numtiles,'tiles to',outdir)
+        savefunc(pathjoin(outdir,'mask'),self.mask)
+        savefunc(pathjoin(outdir,'maskinit'),self.maskinit)
+        with open(pathjoin(outdir,tileinfof),'w') as fid:
+            print('\n'.join(logmsg),file=fid)
+
+    @timeit
+    def plot_tiles(self,img,**kwargs):
+        import pylab as pl
+        import matplotlib.patches as patches
+        fig,ax = pl.subplots(2,1,sharex=True,sharey=True)
+        ax[0].imshow(img)
+        ax[1].imshow(np.uint8(self.maskinit))        
+        for i,tij in enumerate(self.tiles):
+            tijid,tijslstr = 'tile%d'%i,tile2str(tij)
+            tijimg,tijvalid = img[self.tiles[i]],self.percent_valid[i]
+
             pi = patches.Rectangle((tij[1].start,tij[0].start),
                                   self.tiledim,self.tiledim,
                                   fill=False,edgecolor='g',
@@ -204,18 +228,5 @@ class MaskTiler:
                                   self.tiledim,self.tiledim,
                                   fill=False,edgecolor='g',
                                   linewidth=2)            
-            axi.add_patch(pi)
-            axm.add_patch(pm)
-
-        print('Saved',self.numtiles,'tiles to',outdir)
-        savefunc(pathjoin(outdir,'mask'),self.mask)
-        savefunc(pathjoin(outdir,'maskinit'),self.maskinit)
-        with open(pathjoin(outdir,tileinfof),'w') as fid:
-            print('\n'.join(logmsg),file=fid)
-
-
-        pl.figure()
-        pl.imshow(np.uint8(self.mask))
-
-        pl.show()
-                
+            ax[0].add_patch(pi)
+            ax[1].add_patch(pm)
