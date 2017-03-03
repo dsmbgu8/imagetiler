@@ -1,8 +1,9 @@
 from __future__ import absolute_import, print_function, division
 
 from .util import *
+from .basetiler import *
 
-class RectTiler:
+class RectTiler(BaseTiler):
     def __init__(self,rcomp,tiledim,**kwargs):
         '''
         conn=1: only center tile

@@ -1,6 +1,7 @@
 from __future__ import absolute_import, print_function, division
 
 from .util import *
+from .basetiler import *
 from numpy.random import randint
 
 
@@ -8,7 +9,7 @@ from warnings import warn, filterwarnings
 filterwarnings("ignore", message='.*is a low contrast image.*')
 
         
-class MaskTiler:
+class MaskTiler(BaseTiler):
     """
     MaskTiler(mask,tiledim,numtiles,maxsearch=1000,accept=0.5,reinit_mask=True,
               replacement=False,verbose=False)
@@ -199,11 +200,7 @@ class MaskTiler:
         self.ul = list(set([(tij[0].start,tij[1].start) for tij in tiles]))
         return self.ul
 
-    def extract(self, img):
-        return extract_tiles(img,self.ul,self.tiledim)
-
-
-class RegionTiler:
+class RegionTiler(BaseTiler):
     def __init__(self,rcomp,tiledim,numtiles,**kwargs):
         self.ul       = []
         self.rcomp    = rcomp

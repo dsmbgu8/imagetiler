@@ -1,6 +1,7 @@
 from __future__ import absolute_import, print_function, division
 
 from .util import *
+from .basetiler import *
 from .recttiler import *
 from .masktiler import *
 
@@ -14,7 +15,7 @@ filterwarnings("ignore", message='.*is a low contrast image.*')
 MIN_TILES = 25
 MAX_TILES = 200
         
-class ClassMaskTiler:
+class ClassMaskTiler(BaseTiler):
     def __init__(self,tpmask,tnmask,fpmask,tiledim,**kwargs):
         self.fp_conn = kwargs.pop('fp_conn',1) # don't collect quad tiles for fp
         self.verbose = kwargs.pop('verbose',True)

@@ -68,7 +68,7 @@ def timeit(func):
     return wrapper
 
 tileinfof = 'tileinfo.txt'
-tileinfohdr = 'tileid row_start row_stop col_start col_stop percent_valid'
+tileinfohdr = 'tileid row_start row_stop col_start col_stop percent_seen'
 def tile2str(tileslice):
     """
     converts 3d tile slice ((row_start,row_stop,None),(col_start,col_stop,None)) to
@@ -108,7 +108,7 @@ def extract_tiles(img,ul_list,tdim):
     return tiledict
 
 @timeit
-def save_tiles(tiledict,outdir,outext,savefunc,**kwargs):
+def save_tiles(img,ul_list,tdim,outdir,outext,savefunc,**kwargs):
     overwrite = kwargs.pop('overwrite',False)
     outprefix = kwargs.pop('outprefix','tile')
     if pathexists(outdir) and overwrite:
@@ -123,7 +123,8 @@ def save_tiles(tiledict,outdir,outext,savefunc,**kwargs):
     elif not pathexists(outdir):
         print('created directory %s'%outdir)
         os.makedirs(outdir)
-        
+
+    tiledict = extract_tiles(img,ul_list,tdim)
     outfiles = []
     for tul in sorted(tiledict.keys()):
         timg = tiledict[tul]
@@ -134,7 +135,7 @@ def save_tiles(tiledict,outdir,outext,savefunc,**kwargs):
     return outfiles
 
 @timeit
-def plot_tiles(tiledict,img,**kwargs):
+def plot_tiles(img,ul_list,tdim,**kwargs):
     import pylab as pl
     from matplotlib.patches import Rectangle as rect
     patchkw = dict(edgecolor=kwargs.pop('color','g'),linewidth=1,fill=False)
@@ -143,9 +144,7 @@ def plot_tiles(tiledict,img,**kwargs):
         fig,ax = pl.subplots(1,1,sharex=True,sharey=True)
         ax.imshow(img)
         
-    for tul in sorted(tiledict.keys()):
-        timg = tiledict[tul]
-        tdim = (timg.shape[0],timg.shape[1])
-        ax.add_patch(rect(tul[::-1],tdim[0],tdim[1],**patchkw))
+    for ul in ul_list:
+        ax.add_patch(rect(ul[::-1],tdim,tdim,**patchkw))
     return ax
 
