@@ -1,14 +1,8 @@
 from __future__ import absolute_import, print_function, division
 import pylab as pl
-from imtile import *
-from imtile.util import *
+from imtiler import *
+from imtiler.util import *
 
-# either use default loader+saver+mask functions
-loadfunc = DefaultLoader()
-savefunc = DefaultSaver()
-maskfunc = DefaultMasker()
-
-# or override defaults like this:
 class FiniteMasker:
     """
     Summary: marks pixels with elts that are all finite as valid
@@ -24,55 +18,67 @@ class FiniteMasker:
     """
     def __call__(self, img, **kwargs):
         import numpy as np
+        if isinstance(img,str) and pathexists(img):
+            img = loadfunc(img)
         return np.isfinite(np.atleast_3d(img)).all(axis=2)
-maskfunc = FiniteMasker()
+
+maskfunc = DefaultMasker()
 
 if __name__ == '__main__':
     import argparse
+    import numpy as np
+    
     parser = argparse.ArgumentParser(description='Image tiler')
-    parser.add_argument('-e','--imgext', type=str, default='.jpg',
-                       help='Image file extension')
-    parser.add_argument('-d','--tiledim', type=int, default=250,
+    parser.add_argument('-t','--tiledim', type=int, default=256,
                        help='Tile dimension')
     parser.add_argument('-n','--numtiles', type=int, default=10,
                        help='Max number of tiles to extract from each image')
-    parser.add_argument('-o','--overlap', type=float, default=0.75,
-                       help='% value to reject tiles that overlap mask')
-    parser.add_argument('-w','--with-replacement', action='store_true',
+    parser.add_argument('-a','--accept', type=float, default=0.75,
+                       help='% of valid pixels neccessary to accept tiles')
+    parser.add_argument('-r','--replacement', action='store_true',
                        help='Sample image tiles with replacement')
-    parser.add_argument('-r','--regen-tiles', action='store_true',
-                       help='Regenerate image tiles if they already exist')
-
+    parser.add_argument('-s','--seed', type=int, default=42,
+                        help='Random seed value')    
+    parser.add_argument('-o','--outdir', default='./tile_cache/',
+                        type=str, help='Output directory for image tiles')    
+    parser.add_argument('-c','--clobber', action='store_true',
+                       help='Overwrite image tiles if they already exist')
+    parser.add_argument('-e','--ext', type=str, default='.png',
+                       help='Output file extension')    
     parser.add_argument('-v','--verbose', action='store_true',
                        help='Enable verbose output')
-    parser.add_argument('imgdir', type=str, metavar='IMGDIR',
-                       help='Image directory')
-    parser.add_argument('outdir', metavar='OUTDIR', default='./tiles/',
-                       type=str, help='Output directory for image tiles')    
+    parser.add_argument('image', type=str, metavar='IMAGE',
+                       help='Image to tile')
     args = parser.parse_args()
-    
-    imgdir = args.imgdir
-    imgext = args.imgext    
-    verbose = args.verbose
 
+    np.random.seed(args.seed)
+
+    verbose = args.verbose
+    
+    imagef = args.image
+    imagebase,imageext = splitext(imagef)
+    
     # output dir / extension for tile images
     tiledir = args.outdir
-    tileext = imgext
+    tileext = args.ext 
 
     # tile parameters
-    tiledim = args.tiledim
-    maxtiles = args.numtiles
-    masked_reject = args.overlap
-    with_replacement = args.with_replacement
-    regen_tiles = args.regen_tiles
-    tc = TileCollection(imgdir,imgext,tiledir,tiledim,maxtiles,
-                        loadfunc,savefunc,maskfunc,masked_reject=masked_reject,
-                        with_replacement=with_replacement,tileext=tileext,
-                        verbose=verbose)
+    tiledim  = args.tiledim
+    numtiles = args.numtiles
+    accept   = args.accept
+    replace  = args.replacement
+
+    image = loadfunc(imagef)
+    mask  = maskfunc(image)
+
+    tiledir = pathjoin(tiledir,splitext(basename(imagef))[0])
+    if not pathexists(tiledir):
+        os.makedirs(tiledir)
     
-    tiles = tc.load(regen=regen_tiles)
-    for imgkey in tiles:
-        imgtiles = tiles[imgkey]
-        print(imgkey+':',len(imgtiles),'tiles of shape',imgtiles[-1].shape)
-        pl.imshow(imgtiles[-1],cmap='gray')
-        pl.show()
+    tiler = MaskTiler(mask,tiledim,numtiles,accept=accept,
+                      replacement=replace,verbose=verbose)
+
+    ul = tiler.collect()
+    save_tiles(image,ul,tiledim,tiledir,tileext,savefunc,outprefix='tile')
+
+    sys.exit(0)
