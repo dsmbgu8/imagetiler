@@ -37,22 +37,29 @@ class ClassMaskTiler(BaseTiler):
             return self.tile_ul
         
         # collect (upper-left) coords for true positives first
-        tiler = QuadTiler(self.tpcomp,self.tiledim)
+        tiler = RectTiler(self.tpcomp,self.tiledim)
         tp = tiler.collect()
 
         # grab the same number of tn as tp
-        ntn = min(max(len(tp),self.ntn,MIN_TILES),MAX_TILES)        
-        tiler = MaskTiler(self.tnmask,self.tiledim,ntn,accept='none',
-                          replacement=True,verbose=self.verbose)
-        tn = tiler.collect()
+        if self.tnmask.any():
+            # accept no overlapping tiles with tpmask, but sample with replacemen
+            ntn = min(max(len(tp),self.ntn,MIN_TILES),MAX_TILES)        
+            tiler = MaskTiler(self.tnmask,self.tiledim,ntn,accept='none',
+                              replacement=True,verbose=self.verbose)
+            self.tile_ul['tn'] = tiler.collect()
+        else:
+            self.tile_ul['tn'] = []
 
         # collect false positives        
         ufplab = np.unique(self.fpcomp[self.fpmask])
-        if len(ufplab) > MAX_TILES:
-            ufplab = randperm(ufplab)[:MAX_TILES]            
-        tiler = QuadTiler(self.fpcomp,self.tiledim,rclab=ufplab,
-                          mask=self.tpmask,conn=self.fp_conn)
-        fp = tiler.collect()
+        if len(ufplab) != 0:
+            if len(ufplab) > MAX_TILES:
+                ufplab = randperm(ufplab)[:MAX_TILES]            
+            tiler = RectTiler(self.fpcomp,self.tiledim,rclab=ufplab,
+                              mask=self.tpmask,conn=self.fp_conn)
+            self.tile_ul['fp'] = tiler.collect()
+        else:
+            self.tile_ul['fp'] = []                
 
         if self.ntprand != 0:
             # get another ntprand random tiles for each tp component    
@@ -60,14 +67,11 @@ class ClassMaskTiler(BaseTiler):
                                 replacement=True,verbose=self.verbose)
             tpr = tiler.collect()
             tp.extend(tpr)                
-
-        self.ntp = len(tp)
-        self.ntn = len(tn)
-        self.nfp = len(fp)
-
         self.tile_ul['tp'] = tp
-        self.tile_ul['tn'] = tn
-        self.tile_ul['fp'] = fp
+            
+        self.ntp = len(self.tile_ul['tp'])
+        self.ntn = len(self.tile_ul['tn'])
+        self.nfp = len(self.tile_ul['fp'])
 
         print(self.ntp,'labeled tiles')
         print(self.ntn,'negative tiles')

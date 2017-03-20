@@ -67,8 +67,6 @@ def timeit(func):
         return res
     return wrapper
 
-tileinfof = 'tileinfo.txt'
-tileinfohdr = 'tileid row_start row_stop col_start col_stop percent_seen'
 def tile2str(tileslice):
     """
     converts 3d tile slice ((row_start,row_stop,None),(col_start,col_stop,None)) to
@@ -76,12 +74,22 @@ def tile2str(tileslice):
     """
     return ' '.join(['%d %d'%(si.start,si.stop) for si in tileslice])
 
+def summarize_tiles(ul_list,tdim):
+    tileinfof = 'tileinfo.txt'
+    tileinfohdr = 'tileid,row_start,row_stop,col_start,col_stop'
+    tstr = [tileinfohdr]
+    for i,ul in enuemerate(ul_list):
+        tstr.append(' '.join(map(str,(i,ul[0],ul[0]+tdim,ul[1],ul[1]+tdim))))
+    tstr = '\n'.join(tstr)
+    with open(tileinfof,'w') as fid:
+        print(tstr,file=fid)
+
 def extract_tile(img,ul,tdim,verbose=False):
     '''
     extract a tile of dims (tdim,tdim,img.shape[2]) offset from upper-left 
     coordinate ul in img, zero pads when tile overlaps image extent 
     '''
-    assert(len(img.shape)==3)
+    assert(img.ndim==3)
     nr,nc,nb = img.shape
     
     lr = (ul[0]+tdim,ul[1]+tdim)
@@ -100,6 +108,63 @@ def extract_tile(img,ul,tdim,verbose=False):
     imgtile[padt:padb,padl:padr] = img[ibeg:iend,jbeg:jend]
     return imgtile
 
+def bands2grid(img,gb,orientation='columnwise'):
+    """
+    bands2grid(img,gb,orientation='columnwise')
+    
+    Summary: converts a [r x c x b] multiband image to a [r x gc x gb]
+    image grid
+    
+    Arguments:
+    - img: [r x c x b] multiband image to split into grid
+    - gb: number of bands for each image in grid
+          (must be a multiple of img.shape[2])
+    
+    Keyword Arguments:
+    - orientation: 'columnwise', 'rowwise', 'square'
+    
+    Output:
+    - [r x gc x gb] image grid
+    """
+    assert((img.ndim==3) and (img.shape[2]>=2*gb) and (img.shape[2]%gb)==0)
+    nr,nc,nb = img.shape
+    gcell = int(nb/gb)
+    if orientation=='columnwise':
+        gr,gc = 1,gcell
+    elif orientation=='rowwise':
+        gr,gc = gcell,1
+    elif orientation=='square':
+        gsq = np.sqrt(gcell)
+        if gsq-int(gsq)!=0:
+            gsq = np.ceil(gsq)
+            warn('gridded image contains %d empty cells'%((gsq**2)-gcell))
+        gsq = int(gsq)
+        gr,gc = gsq,gsq
+
+    def gridslice(gidx):
+        # return the whole image by default
+        gri,gci = int(gidx/gc),gidx%gc
+        sl = (slice(gri*nr,(gri+1)*nr,None),
+              slice(gci*nc,(gci+1)*nc,None))
+        return sl
+            
+    gimg = np.zeros([gr*nr,gc*nc,gb],dtype=img.dtype)
+    for gi in range(gcell):
+        gimg[gridslice(gi)] = img[...,gi:gi+gb]
+    return gimg
+
+def randperm(a):
+    return np.random.permutation(a)
+
+def blockpermute(a,blen=25):
+    b = min(a.shape[0]//2,blen)
+    nb = a.shape[0]//b
+    bmax = nb*b
+    for i in range(0,bmax,b):
+        a[i:i+b] = randperm(a[i:i+b])
+    a[bmax:] = randperm(a[bmax:])
+    return a
+
 @timeit
 def extract_tiles(img,ul_list,tdim):
     tiledict = {}
@@ -108,7 +173,22 @@ def extract_tiles(img,ul_list,tdim):
     return tiledict
 
 @timeit
-def save_tiles(img,ul_list,tdim,outdir,outext,savefunc,**kwargs):
+def save_tiles_dict(img,ul_dict,tdim,outdir,outext,savefunc,**kwargs):
+    # ul_dict = dict of (key0,[coord00, ..., coord0N]) pairs
+    out = {}
+    for key in  ul_dict:
+        # save tiles in 'outdir/key' directory
+        out[key] = save_tiles(img,ul_dict[key],tdim,pathjoin(outdir,key),
+                              outext,savefunc,**kwargs)
+    return out
+
+@timeit
+def save_tiles_list(img,ul_list,tdim,outdir,outext,savefunc,**kwargs):
+    # ul_list = list of [coord0, ..., coordN] ul coordinates
+    if len(ul_list)==0:
+        print('empty ul_list: no tiles saved to',outdir)
+        return []
+    
     overwrite = kwargs.pop('overwrite',False)
     outprefix = kwargs.pop('outprefix','tile')
     if pathexists(outdir) and overwrite:
@@ -134,17 +214,32 @@ def save_tiles(img,ul_list,tdim,outdir,outext,savefunc,**kwargs):
     print('Saved',len(outfiles),'tiles to',outdir)
     return outfiles
 
+# alias for convenience sake
+def save_tiles(img,ul,tdim,outdir,outext,savefunc,**kwargs):
+    if isinstance(ul,list):
+        func = save_tiles_list
+    elif isinstance(ul,dict):
+        func = save_tiles_dict
+    return func(img,ul,tdim,outdir,outext,savefunc,**kwargs)
+
 @timeit
 def plot_tiles(img,ul_list,tdim,**kwargs):
     import pylab as pl
     from matplotlib.patches import Rectangle as rect
     patchkw = dict(edgecolor=kwargs.pop('color','g'),linewidth=1,fill=False)
-    ax = kwargs.get('ax',None)
-    if ax is None:
-        fig,ax = pl.subplots(1,1,sharex=True,sharey=True)
-        ax.imshow(img)
+    mask = kwargs.pop('mask',np.ones_like(img))
+    show = kwargs.pop('show',True)
+
+    fig,ax = pl.subplots(1,2,sharex=True,sharey=True)
+    ax[0].imshow(img.squeeze())
+    ax[1].imshow(mask.squeeze())
         
     for ul in ul_list:
-        ax.add_patch(rect(ul[::-1],tdim,tdim,**patchkw))
+        ax[0].add_patch(rect(ul[::-1],tdim,tdim,**patchkw))
+        ax[1].add_patch(rect(ul[::-1],tdim,tdim,**patchkw))
+
+    if show:
+        pl.show()
+            
     return ax
 

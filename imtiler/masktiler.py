@@ -4,10 +4,8 @@ from .util import *
 from .basetiler import *
 from numpy.random import randint
 
-
 from warnings import warn, filterwarnings
 filterwarnings("ignore", message='.*is a low contrast image.*')
-
         
 class MaskTiler(BaseTiler):
     """
@@ -23,6 +21,7 @@ class MaskTiler(BaseTiler):
     
     Keyword Arguments:
     - accept: max percentage of seen (mask==1) pixels/tile to accept
+              (smaller values == less overlap)
     
     Output:
     - tileij = list of tiledim x tiledim tiles (2d slices) to use to extract subimages
@@ -37,7 +36,7 @@ class MaskTiler(BaseTiler):
         
         nrows,ncols = mask.shape[0],mask.shape[1]         
         if nrows<tiledim or ncols<tiledim:
-            msg='tiledim %d too large for shape (%dx%d)'%(tiledim,nrows,ncols)
+            msg='tiledim %d too large for shape (%d x %d)'%(tiledim,nrows,ncols)
             raise Exception(msg)
 
         self.tiles     = []
@@ -48,38 +47,54 @@ class MaskTiler(BaseTiler):
         self.numtiles  = numtiles
         self.ntilepix  = tiledim*tiledim
 
+        # assign initial mask pixels + compute threshold
+        self.maskskip  = np.uint32(mask==0) # 0=invalid pixel, so we should skip it
+        self.maskseen  = self.maskskip.copy() # consider invalid pixels "seen"
+
+        print(self.accept,(self.maskskip.sum(),(nrows*ncols)))
+
         self.strict = False
         if self.accept=='none':
             # 'none' -> tile cannot contain any overlapping pixels
             self.accept = 0.0
             self.strict = True
+        elif self.accept=='mask':
+            self.accept = (float(self.maskskip.sum())/(nrows*ncols))
         elif self.accept=='min':
             # 'min' -> tiles can only contain 1 overlapping pixel
-            self.accept = (self.ntilepix-2.0)/self.ntilepix
+            self.accept = 2.0/self.ntilepix
         elif self.accept=='max':
             # 'max' -> tiles can contain all but 1 overlapping pixel
-            self.accept = 2.0/self.ntilepix
-        
-        # assign initial mask pixels + compute threshold
-        self.maskskip  = (mask==0) # 0=invalid pixel, so we should skip it
-        self.maskseen  = self.maskskip.copy() # consider invalid pixels "seen"
- 
+            self.accept = (self.ntilepix-2.0)/self.ntilepix
+        else:
+            self.accept = float(self.accept)
+            if self.accept > 1:
+                self.accept = self.accept/100.0
+
+        print('accept: %5.2f%%'%(self.accept*100))
+        self.basestep = 1
+        self.colstep = self.rowstep = self.basestep
+        if self.nrows > self.ncols:
+            self.rowstep *= int(np.ceil(self.nrows/self.ncols))
+        elif self.nrows < self.ncols:
+            self.colstep *= int(np.ceil(self.ncols/self.nrows))
+
         # get range of pixel offsets from tile dim
         self.rowdim    = self.nrows-(self.nrows%self.tiledim)
         self.coldim    = self.ncols-(self.ncols%self.tiledim)
-        self.rowrange  = range(0,self.rowdim,5)
-        self.colrange  = range(0,self.coldim,5)
+        self.rowrange  = blockpermute(np.arange(0,self.rowdim,self.rowstep))
+        self.colrange  = blockpermute(np.arange(0,self.coldim,self.colstep))
         self.pixrc     = np.meshgrid(self.rowrange,self.colrange)
         self.pixrc     = np.c_[self.pixrc].reshape([2,-1]).T
         
         # compute number of rows/cols of tiledim-sized tiles
-        ntilerows      = int(np.ceil(self.nrows/tiledim))
-        ntilecols      = int(np.ceil(self.ncols/tiledim))
-        self.tileij    = np.meshgrid(range(ntilerows),range(ntilecols))
+        ntilerows      = int(np.ceil(self.nrows/tiledim))+1
+        ntilecols      = int(np.ceil(self.ncols/tiledim))+1
+        self.tileij    = np.meshgrid(np.arange(ntilerows),np.arange(ntilecols))
         self.tileij    = np.c_[self.tileij].reshape([2,-1]).T
 
-        self.maxcover = 0.95*self.ntilepix
-        self.maxseen  = int(self.accept*self.ntilepix)
+        self.maxseen   = int(self.accept*self.ntilepix)
+        self.maxreinit = 10
 
     def next(self):
         # randomly selects a tile from the list of pixel/tile offsets
@@ -87,12 +102,13 @@ class MaskTiler(BaseTiler):
         # returns best tile slice and percent of unmasked pixels for best slice
         # (larger percentages=less overlap with previously-selected tiles)
         
-        tijbest,tijseen = None, self.ntilepix 
+        tijbest,tijseen,tijover = None,self.ntilepix,self.ntilepix 
 
         if len(self.pixrc)==0 or len(self.tileij)==0:
             warn('no pixel offsets defined, cannot proceed')
             return (tijbest, tijseen)
-        
+
+        nreinit = 0
         nsearch = 0
         pixrc  = list(self.pixrc)
         # pick a random row/col pixel offset from our seen pixel list
@@ -111,32 +127,40 @@ class MaskTiler(BaseTiler):
                        slice(j,j+self.tiledim,None))
                 
                 # select tile with the fewest seen (maskseen==1) pixels
-                nseen = np.count_nonzero(self.maskseen[tij])
-                if nseen<tijseen:
-                    tijbest, tijseen = tij, nseen
-                    if nseen<=self.maxseen:
-                        # exit early if we meet stopping criteria
-                        nsearch = self.maxsearch
-                        break
+                tvals = self.maskseen[tij]
+                nseen = np.count_nonzero(tvals)
+                if nseen<tijseen or self.replacement:
+                    nover = tvals.max()
+                    if nover<=tijover:
+                        tijbest, tijseen, tijover = tij, nseen, nover
+                        if nseen<=self.maxseen:
+                            # exit early if we meet stopping criteria
+                            nsearch = self.maxsearch
+                            break
 
             # found an acceptable tile or all pixels masked inseen (reset or exit)
             if nsearch>=self.maxsearch:                                                
-                # reset mask if our best tile is covered by more than maxcover
-                if self.reinit_mask and tijseen > self.maxcover:
+                # reset mask if our best tile is covered by more than maxseen
+                if self.reinit_mask and tijseen>self.maxseen:
                     if self.verbose:
-                        coverage = tijseen/self.ntilepix
-                        msg = "Reinitializing mask (%6.3f%% pixel coverage)"%coverage
+                        tcoverage = tijseen/self.ntilepix
+                        msg = "Reinitializing mask (%6.3f%% coverage)"%tcoverage
                         warn(msg)
                     self.maskseen = self.maskskip.copy()
                     # pick a new offset to increase sampling diversity
                     r,c = pixrc.pop(randint(len(pixrc)))
-                    tijbest, tijseen = None, self.ntilepix
+                    tijbest,tijseen,tijover = None,self.ntilepix,self.ntilepix
                     nsearch = 0
+                    nreinit += 1
+                    if nreinit > self.maxreinit:
+                        # bail out if we have no choice
+                        break
                 else:
                     # found a good tile, mask if sampling wo replacement
                     if not self.replacement:
-                        self.maskseen[tijbest] = True
-                break
+                        self.maskseen[tijbest] += 1
+                    nreinit = 0 # we can reinit again if we found a good tile
+                    break
 
             # randomly increment either the row or the column, but not both
             if randint(2)==1:
@@ -150,31 +174,22 @@ class MaskTiler(BaseTiler):
             nsearch += 1
                     
         return (tijbest, tijseen)
-
-    def __repr__(self):
-        ntiles = len(self.tiles)
-        outstr = ['%d tiles'%ntiles]
-        if ntiles == 0:
-            return outstr[0]
-        
-        outstr.append(tileinfohdr)
-        for i,tij in enumerate(self.tiles):
-            tijpercent = self.percent_seen[i]
-            outstr.append(str(i,tile2str(tij),'%4.3f'%tijpercent))
-                
-        return '\n'.join(outstr)
     
     @timeit
     def collect(self):
         if self.ul != []:
             return self.ul
-        
+
+        ul = []
         tiles = []
         percent_seen = []
 
         if self.verbose:
-            print('Collecting tiles')
-            print(tileinfohdr)
+            nrows,ncols = self.maskskip.shape[:2]
+            print('Collecting up to',self.numtiles,'tiles')
+            print('Image dims: (%d x %d)'%(nrows,ncols))
+            print('Tile dims: (%d x %d)'%(self.tiledim,self.tiledim))
+            
         for i in range(self.numtiles):
             tij,tijseen = self.next()
             if tij==None:
@@ -190,6 +205,7 @@ class MaskTiler(BaseTiler):
                                                                  self.maxseen))
                 continue
             tiles.append(tij)
+            ul.append((tij[0].start,tij[1].start))
             percent_seen.append(tijpercent)
 
         self.tiles = tiles
@@ -197,7 +213,7 @@ class MaskTiler(BaseTiler):
         numtiles = len(tiles)
         print('Collected',numtiles,'of',self.numtiles,'requested tiles')
         self.numtiles = numtiles
-        self.ul = list(set([(tij[0].start,tij[1].start) for tij in tiles]))
+        self.ul = list(set(ul))
         return self.ul
 
 class RegionTiler(BaseTiler):
@@ -207,7 +223,7 @@ class RegionTiler(BaseTiler):
         self.rclab    = kwargs.pop('rclab',np.unique(rcomp[rcomp!=0]))
         self.tiledim  = tiledim
         self.numtiles = numtiles
-        self.kwargs   = kwargs
+        self.tilerkw  = kwargs
         
     def collect(self):
         if self.ul != []:
@@ -216,7 +232,7 @@ class RegionTiler(BaseTiler):
         ul = []
         for r in self.rclab:
             tiler = MaskTiler((self.rcomp==r),self.tiledim,self.numtiles,
-                              **self.kwargs)
+                              **self.tilerkw)
             print(r,(self.rcomp==r).sum(),tiler.collect())
             ul.extend(tiler.collect())
         self.ul = ul
