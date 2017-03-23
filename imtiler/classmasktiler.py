@@ -3,18 +3,13 @@ from __future__ import absolute_import, print_function, division
 from .util import *
 from .basetiler import *
 from .recttiler import *
+from .regiontiler import *
 from .masktiler import *
 
 from skimage.measure import label as imlabel
 
 from numpy.random import randint, permutation as randperm
 
-from warnings import warn, filterwarnings
-filterwarnings("ignore", message='.*is a low contrast image.*')
-
-MIN_TILES = 25
-MAX_TILES = 200
-        
 class ClassMaskTiler(BaseTiler):
     def __init__(self,tpmask,tnmask,fpmask,tiledim,**kwargs):
         self.fp_conn = kwargs.pop('fp_conn',1) # don't collect quad tiles for fp
@@ -26,8 +21,8 @@ class ClassMaskTiler(BaseTiler):
         self.fpmask  = fpmask
         self.tpcomp  = imlabel(self.tpmask)
         self.fpcomp  = imlabel(self.fpmask)
-        self.ntn     = MIN_TILES
-        self.ntprand = MIN_TILES
+        self.ntn     = kwargs.pop('ntn',MIN_TILES)
+        self.ntprand = kwargs.pop('ntprand',MIN_TILES)
 
         print('orig mask alignment:',(self.fpmask & self.tpmask).sum())
         print('flip mask alignment:',(self.fpmask & np.flipud(self.tpmask)).sum())
@@ -43,8 +38,9 @@ class ClassMaskTiler(BaseTiler):
         # grab the same number of tn as tp
         if self.tnmask.any():
             # accept no overlapping tiles with tpmask, but sample with replacemen
-            ntn = min(max(len(tp),self.ntn,MIN_TILES),MAX_TILES)        
-            tiler = MaskTiler(self.tnmask,self.tiledim,ntn,accept='none',
+            ntn = self.ntn if (self.ntn != -1) else min(len(tp),MAX_TILES) 
+
+            tiler = MaskTiler(self.tnmask,self.tiledim,numtiles=ntn,accept='none',
                               replacement=True,verbose=self.verbose)
             self.tile_ul['tn'] = tiler.collect()
         else:
@@ -62,9 +58,10 @@ class ClassMaskTiler(BaseTiler):
             self.tile_ul['fp'] = []                
 
         if self.ntprand != 0:
+            randaccept='none' # 'min' # 
             # get another ntprand random tiles for each tp component    
-            tiler = RegionTiler(self.tpcomp,self.tiledim,self.ntprand,accept='max',
-                                replacement=True,verbose=self.verbose)
+            tiler = RegionTiler(self.tpcomp,self.tiledim,numtiles=self.ntprand,
+                                accept=0.75,exclude=tp,verbose=self.verbose)
             tpr = tiler.collect()
             tp.extend(tpr)                
         self.tile_ul['tp'] = tp

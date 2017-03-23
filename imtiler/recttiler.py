@@ -27,9 +27,9 @@ class RectTiler(BaseTiler):
         t2,t4,t8 = self.tiledim//2,self.tiledim//4,self.tiledim//8
         toff = []
         if self.conn == 4:
-            toff.extend([-t4,t4])
+            toff = [-t4,t4]
         elif self.conn == 8:
-            toff.extend([-t4,-t8,t8,t4])
+            toff = [-t4,t4,-t8,t8]
             
         ul = []
         for r in self.rclab:

@@ -84,30 +84,6 @@ def summarize_tiles(ul_list,tdim):
     with open(tileinfof,'w') as fid:
         print(tstr,file=fid)
 
-def extract_tile(img,ul,tdim,verbose=False):
-    '''
-    extract a tile of dims (tdim,tdim,img.shape[2]) offset from upper-left 
-    coordinate ul in img, zero pads when tile overlaps image extent 
-    '''
-    assert(img.ndim==3)
-    nr,nc,nb = img.shape
-    
-    lr = (ul[0]+tdim,ul[1]+tdim)
-    padt,padb = abs(max(0,-ul[0])), tdim-max(0,lr[0]-nr)
-    padl,padr = abs(max(0,-ul[1])), tdim-max(0,lr[1]-nc)
-    
-    ibeg,iend = max(0,ul[0]),min(nr,lr[0])
-    jbeg,jend = max(0,ul[1]),min(nc,lr[1])
-
-    if verbose:
-        print(ul,nr,nc)
-        print(padt,padb,padl,padr)
-        print(ibeg,iend,jbeg,jend)
-
-    imgtile = np.zeros([tdim,tdim,nb],dtype=img.dtype)
-    imgtile[padt:padb,padl:padr] = img[ibeg:iend,jbeg:jend]
-    return imgtile
-
 def bands2grid(img,gb,orientation='columnwise'):
     """
     bands2grid(img,gb,orientation='columnwise')
@@ -153,6 +129,15 @@ def bands2grid(img,gb,orientation='columnwise'):
         gimg[gridslice(gi)] = img[...,gi:gi+gb]
     return gimg
 
+def disk(radius):
+    from skimage.morphology import disk as _disk
+    return _disk(radius)
+
+def bwdilate(bwimg,**kwargs):
+    from skimage.morphology import binary_dilation as _bwd
+    kwargs.setdefault('selem',disk(3))
+    return _bwd(bwimg,**kwargs)
+
 def randperm(a):
     return np.random.permutation(a)
 
@@ -165,6 +150,30 @@ def blockpermute(a,blen=25):
     a[bmax:] = randperm(a[bmax:])
     return a
 
+def extract_tile(img,ul,tdim,verbose=False):
+    '''
+    extract a tile of dims (tdim,tdim,img.shape[2]) offset from upper-left 
+    coordinate ul in img, zero pads when tile overlaps image extent 
+    '''
+    assert(img.ndim==3)
+    nr,nc,nb = img.shape
+    
+    lr = (ul[0]+tdim,ul[1]+tdim)
+    padt,padb = abs(max(0,-ul[0])), tdim-max(0,lr[0]-nr)
+    padl,padr = abs(max(0,-ul[1])), tdim-max(0,lr[1]-nc)
+    
+    ibeg,iend = max(0,ul[0]),min(nr,lr[0])
+    jbeg,jend = max(0,ul[1]),min(nc,lr[1])
+
+    if verbose:
+        print(ul,nr,nc)
+        print(padt,padb,padl,padr)
+        print(ibeg,iend,jbeg,jend)
+
+    imgtile = np.zeros([tdim,tdim,nb],dtype=img.dtype)
+    imgtile[padt:padb,padl:padr] = img[ibeg:iend,jbeg:jend]
+    return imgtile
+
 @timeit
 def extract_tiles(img,ul_list,tdim):
     tiledict = {}
@@ -173,14 +182,15 @@ def extract_tiles(img,ul_list,tdim):
     return tiledict
 
 @timeit
-def save_tiles_dict(img,ul_dict,tdim,outdir,outext,savefunc,**kwargs):
+def save_tiles_dict(img,ul_dict,tdim,outdir,outext,savefunc,**kwargs):    
     # ul_dict = dict of (key0,[coord00, ..., coord0N]) pairs
-    out = {}
-    for key in  ul_dict:
+    outf = {}
+    for key in ul_dict:
         # save tiles in 'outdir/key' directory
-        out[key] = save_tiles(img,ul_dict[key],tdim,pathjoin(outdir,key),
-                              outext,savefunc,**kwargs)
-    return out
+        outf[key] = save_tiles_list(img,ul_dict[key],tdim,pathjoin(outdir,key),
+                                    outext,savefunc,**kwargs)
+    
+    return outf
 
 @timeit
 def save_tiles_list(img,ul_list,tdim,outdir,outext,savefunc,**kwargs):

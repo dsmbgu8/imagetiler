@@ -3,9 +3,6 @@ from __future__ import absolute_import, print_function, division
 from .util import *
 from .basetiler import *
 from numpy.random import randint
-
-from warnings import warn, filterwarnings
-filterwarnings("ignore", message='.*is a low contrast image.*')
         
 class MaskTiler(BaseTiler):
     """
@@ -16,8 +13,8 @@ class MaskTiler(BaseTiler):
     initial mask of valid pixel locations
     
     Arguments:
-    - tiledim: tile dimension
     - mask: [nrows x ncols] bool mask indicating valid regions to sample in img
+    - tiledim: tile dimension
     
     Keyword Arguments:
     - accept: max percentage of seen (mask==1) pixels/tile to accept
@@ -27,12 +24,14 @@ class MaskTiler(BaseTiler):
     - tileij = list of tiledim x tiledim tiles (2d slices) to use to extract subimages
     """
 
-    def __init__(self,mask,tiledim,numtiles,**kwargs):
+    def __init__(self,mask,tiledim,**kwargs):
+        self.numtiles    = kwargs.pop('numtiles',MIN_TILES)
         self.maxsearch   = kwargs.pop('maxsearch',1000)
         self.replacement = kwargs.pop('replacement',False)
         self.reinit_mask = kwargs.pop('reinit_mask',True)
         self.accept      = kwargs.pop('accept',0.5)        
         self.verbose     = kwargs.pop('verbose',False)
+        self.maxreinit   = kwargs.pop('maxreinit',10)
         
         nrows,ncols = mask.shape[0],mask.shape[1]         
         if nrows<tiledim or ncols<tiledim:
@@ -44,7 +43,6 @@ class MaskTiler(BaseTiler):
         self.nrows     = nrows
         self.ncols     = ncols
         self.tiledim   = tiledim
-        self.numtiles  = numtiles
         self.ntilepix  = tiledim*tiledim
 
         # assign initial mask pixels + compute threshold
@@ -71,6 +69,8 @@ class MaskTiler(BaseTiler):
             if self.accept > 1:
                 self.accept = self.accept/100.0
 
+        self.maxseen   = int(self.accept*self.ntilepix)
+                
         print('accept: %5.2f%%'%(self.accept*100))
         self.basestep = 1
         self.colstep = self.rowstep = self.basestep
@@ -92,9 +92,6 @@ class MaskTiler(BaseTiler):
         ntilecols      = int(np.ceil(self.ncols/tiledim))+1
         self.tileij    = np.meshgrid(np.arange(ntilerows),np.arange(ntilecols))
         self.tileij    = np.c_[self.tileij].reshape([2,-1]).T
-
-        self.maxseen   = int(self.accept*self.ntilepix)
-        self.maxreinit = 10
 
     def next(self):
         # randomly selects a tile from the list of pixel/tile offsets
@@ -214,26 +211,4 @@ class MaskTiler(BaseTiler):
         print('Collected',numtiles,'of',self.numtiles,'requested tiles')
         self.numtiles = numtiles
         self.ul = list(set(ul))
-        return self.ul
-
-class RegionTiler(BaseTiler):
-    def __init__(self,rcomp,tiledim,numtiles,**kwargs):
-        self.ul       = []
-        self.rcomp    = rcomp
-        self.rclab    = kwargs.pop('rclab',np.unique(rcomp[rcomp!=0]))
-        self.tiledim  = tiledim
-        self.numtiles = numtiles
-        self.tilerkw  = kwargs
-        
-    def collect(self):
-        if self.ul != []:
-            return self.ul
-
-        ul = []
-        for r in self.rclab:
-            tiler = MaskTiler((self.rcomp==r),self.tiledim,self.numtiles,
-                              **self.tilerkw)
-            print(r,(self.rcomp==r).sum(),tiler.collect())
-            ul.extend(tiler.collect())
-        self.ul = ul
         return self.ul

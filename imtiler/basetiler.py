@@ -2,6 +2,12 @@ from __future__ import absolute_import, print_function, division
 
 from .util import *
 
+from warnings import warn, filterwarnings
+filterwarnings("ignore", message='.*is a low contrast image.*')
+
+MIN_TILES = 25
+MAX_TILES = 200
+
 class BaseTiler(object):
     def __init__(self,**kwargs):
         pass
