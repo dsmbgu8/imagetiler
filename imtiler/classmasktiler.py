@@ -23,9 +23,9 @@ class ClassMaskTiler(BaseTiler):
         self.tpcomp  = kwargs.pop('tpcomp',[])
         self.fpcomp  = kwargs.pop('fpcomp',[])
         if len(self.tpcomp) == 0:
-            self.tpcomp = imlabel(self.tpmask))
+            self.tpcomp = imlabel(self.tpmask)
         if len(self.fpcomp) == 0:
-            self.fpcomp = imlabel(self.fpmask))
+            self.fpcomp = imlabel(self.fpmask)
         self.ntn     = kwargs.pop('ntn',MIN_TILES)
         self.ntprand = kwargs.pop('ntprand',MIN_TILES)
         self.tp_conn = kwargs.pop('tp_conn',8) # collect octtiles for fp
