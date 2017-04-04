@@ -34,21 +34,18 @@ class CoverageTiler(BaseTiler):
     """
 
     def __init__(self,mask,tiledim,**kwargs):
+        super(CoverageTiler,self).__init__(tiledim,**kwargs)
         self.numtiles    = kwargs.pop('numtiles',MIN_TILES)
         self.accept      = kwargs.pop('accept',0.75)
-        self.verbose     = kwargs.pop('verbose',False)
-        self.exclude     = kwargs.pop('exclude',[])
+        self.exclude     = kwargs.pop('exclude_coords',[])
         
         nrows,ncols = mask.shape[0],mask.shape[1]         
         if nrows<tiledim or ncols<tiledim:
             msg='tiledim %d too large for shape (%d x %d)'%(tiledim,nrows,ncols)
             raise Exception(msg)
 
-        
-        self.ul        = []
         self.nrows     = nrows
         self.ncols     = ncols
-        self.tiledim   = tiledim
         self.ntilepix  = tiledim*tiledim
 
         # assign initial mask pixels + compute threshold
@@ -69,27 +66,29 @@ class CoverageTiler(BaseTiler):
         colmin = colidx.min()
         colmax = min(ncols-tiledim,colidx.max()+tiledim)
 
-        self.rowrange = np.arange(rowmin,rowmax)
-        self.colrange = np.arange(colmin,colmax)
-        self.pixij    = np.meshgrid(self.rowrange,self.colrange)
-        self.pixij    = np.int32(np.c_[self.pixij].reshape([2,-1]).T)
-
+        self.pixi = np.int32(np.arange(rowmin,rowmax))
+        self.pixj = np.int32(np.arange(colmin,colmax))
+        self.npixi = len(self.pixi)
+        self.npixj = len(self.pixj)
+        self.npixij = self.npixi*self.npixj
+        #self.pixij    = np.meshgrid(self.rowrange,self.colrange)
+        #self.pixij    = np.int32(np.c_[self.pixij].reshape([2,-1]).T)
+        self.visted = set([])
         if len(self.exclude)!=0:
             exclude = set(self.exclude)
-            keepidx = np.ones(len(self.pixij),dtype=np.bool8)
-            for i,ij in enumerate(self.pixij):
-                if (ij[0],ij[1]) in exclude:
-                    keepidx[i] = 0
-            self.pixij = self.pixij[keepidx]
-        
         self.mincover = int(self.accept*self.nmask)
         
     def next(self):
-        pixij = list(self.pixij)
-        while pixij != []:
-            i,j = pixij.pop(randint(len(pixij)))
-            if i+self.tiledim>=self.nrows or j+self.tiledim>=self.ncols:
+        for ipixij in range(self.npixij):
+            if len(self.visited)==self.npixij:
+                self.visited = set([])
+            i = self.pixi[randint(self.npixi)]
+            j = self.pixj[randint(self.npixj)]
+            ij = (i,j)
+            if ij in self.exclude or ij in self.visited or \
+               i+self.tiledim>=self.nrows or j+self.tiledim>=self.ncols:
                 continue
+            self.visited.add(ij)
             
             tij = (slice(i,i+self.tiledim,None),
                    slice(j,j+self.tiledim,None))

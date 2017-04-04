@@ -9,8 +9,13 @@ MIN_TILES = 25
 MAX_TILES = 200
 
 class BaseTiler(object):
-    def __init__(self,**kwargs):
-        pass
+    def __init__(self,tiledim,**kwargs):
+        self.rndstate = kwargs.pop('random_state',42)
+        self.tiledim  = tiledim
+        self.verbose  = kwargs.pop('verbose',True)
+        self.ul       = []
+
+        np.random.seed(self.rndstate)
 
     def collect(self):
         pass

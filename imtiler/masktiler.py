@@ -25,6 +25,8 @@ class MaskTiler(BaseTiler):
     """
 
     def __init__(self,mask,tiledim,**kwargs):
+        super(MaskTiler,self).__init__(tiledim,**kwargs)
+        
         self.numtiles    = kwargs.pop('numtiles',MIN_TILES)
         self.maxsearch   = kwargs.pop('maxsearch',1000)
         self.replacement = kwargs.pop('replacement',False)
@@ -32,6 +34,7 @@ class MaskTiler(BaseTiler):
         self.accept      = kwargs.pop('accept',0.5)        
         self.verbose     = kwargs.pop('verbose',False)
         self.maxreinit   = kwargs.pop('maxreinit',10)
+        self.exclude     = kwargs.pop('exclude_coords',[])
         
         nrows,ncols = mask.shape[0],mask.shape[1]         
         if nrows<tiledim or ncols<tiledim:
@@ -39,7 +42,6 @@ class MaskTiler(BaseTiler):
             raise Exception(msg)
 
         self.tiles     = []
-        self.ul        = []
         self.nrows     = nrows
         self.ncols     = ncols
         self.tiledim   = tiledim
@@ -82,16 +84,23 @@ class MaskTiler(BaseTiler):
         # get range of pixel offsets from tile dim
         self.rowdim    = self.nrows-(self.nrows%self.tiledim)
         self.coldim    = self.ncols-(self.ncols%self.tiledim)
-        self.rowrange  = blockpermute(np.arange(0,self.rowdim,self.rowstep))
-        self.colrange  = blockpermute(np.arange(0,self.coldim,self.colstep))
-        self.pixrc     = np.meshgrid(self.rowrange,self.colrange)
-        self.pixrc     = np.c_[self.pixrc].reshape([2,-1]).T
+        self.pixr      = blockpermute(np.arange(0,self.rowdim,self.rowstep))
+        self.pixc      = blockpermute(np.arange(0,self.coldim,self.colstep))
+        self.npixr     = len(self.pixr)
+        self.npixc     = len(self.pixc)
+        self.npixrc    = self.npixr*self.npixc
+        #self.pixrc     = np.meshgrid(self.pixr,self.pixc)
+        #self.pixrc     = np.c_[self.pixrc].reshape([2,-1]).T
         
         # compute number of rows/cols of tiledim-sized tiles
-        ntilerows      = int(np.ceil(self.nrows/tiledim))+1
-        ntilecols      = int(np.ceil(self.ncols/tiledim))+1
-        self.tileij    = np.meshgrid(np.arange(ntilerows),np.arange(ntilecols))
-        self.tileij    = np.c_[self.tileij].reshape([2,-1]).T
+        self.ntilei    = int(np.ceil(self.nrows/tiledim))+1
+        self.ntilej    = int(np.ceil(self.ncols/tiledim))+1
+        self.ntileij   = self.ntilei*self.ntilej
+        self.tilei     = np.arange(self.ntilei)
+        self.tilej     = np.arange(self.ntilej)
+        self.visited   = set([])
+        #self.tileij    = np.meshgrid(tilei,tilej)
+        #self.tileij    = np.c_[self.tileij].reshape([2,-1]).T
 
     def next(self):
         # randomly selects a tile from the list of pixel/tile offsets
@@ -101,24 +110,34 @@ class MaskTiler(BaseTiler):
         
         tijbest,tijseen,tijover = None,self.ntilepix,self.ntilepix 
 
-        if len(self.pixrc)==0 or len(self.tileij)==0:
+        if len(self.pixr)==0 or len(self.tilei)==0:
             warn('no pixel offsets defined, cannot proceed')
             return (tijbest, tijseen)
 
         nreinit = 0
         nsearch = 0
-        pixrc  = list(self.pixrc)
+        
         # pick a random row/col pixel offset from our seen pixel list
-        r,c = pixrc.pop(randint(len(pixrc)))            
+        #pixrc  = list(self.pixrc)
+        #r,c = pixrc.pop(randint(len(pixrc)))
+        r = self.pixr[randint(self.npixr)]
+        c = self.pixc[randint(self.npixc)]
         while nsearch <= self.maxsearch:
-            tileij = list(self.tileij)
+            #tilei,tilej = list(self.tilei),list(self.tilej)
             # search tiles in random order for current pixel offset
-            while tileij != []:
-                ti,tj = tileij.pop(randint(len(tileij)))
+            for itileij in range(self.ntileij):
+                if len(self.visited)==self.ntileij*self.npixrc:
+                    self.visited = set([])                
+                #ti,tj = tileij.pop(randint(len(tileij)))
+                ti = self.tilei[randint(self.ntilei)]
+                tj = self.tilej[randint(self.ntilej)]
                 i,j = (ti*self.tiledim)+r,(tj*self.tiledim)+c
-                if i+self.tiledim>=self.nrows or j+self.tiledim>=self.ncols:
+                if (i,j) in self.visited or i+self.tiledim>=self.nrows or \
+                   j+self.tiledim>=self.ncols:
                     #  TODO (BDB, 02/21/17): allow padding here? 
                     continue
+                else:
+                    self.visited.add((i,j))
 
                 tij = (slice(i,i+self.tiledim,None),
                        slice(j,j+self.tiledim,None))
@@ -145,7 +164,8 @@ class MaskTiler(BaseTiler):
                         warn(msg)
                     self.maskseen = self.maskskip.copy()
                     # pick a new offset to increase sampling diversity
-                    r,c = pixrc.pop(randint(len(pixrc)))
+                    r = self.pixr[randint(self.npixr)]
+                    c = self.pixc[randint(self.npixc)]
                     tijbest,tijseen,tijover = None,self.ntilepix,self.ntilepix
                     nsearch = 0
                     nreinit += 1
@@ -161,10 +181,10 @@ class MaskTiler(BaseTiler):
 
             # randomly increment either the row or the column, but not both
             if randint(2)==1:
-                rr = self.rowrange[randint(len(self.rowrange))]
+                rr = self.tilei[randint(self.ntilei)]
                 r = (r+rr)%self.rowdim
             else:
-                cc = self.colrange[randint(len(self.colrange))]
+                cc = self.tilej[randint(self.ntilej)]
                 c = (c+cc)%self.coldim
                 
             # keep track of searches to avoid infinite loop

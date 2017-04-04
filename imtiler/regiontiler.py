@@ -24,12 +24,11 @@ class RegionTiler(BaseTiler):
     None
     """    
     def __init__(self,rcomp,tiledim,**kwargs):
-        self.ul       = []
+        super(RegionTiler,self).__init__(tiledim,**kwargs)
         self.rcomp    = rcomp
         self.rclab    = kwargs.pop('rclab',np.unique(rcomp[rcomp!=0]))
-        self.tiledim  = tiledim
-        self.tilefn   = kwargs.pop('tilefn','coverage')
-        self.tiler    = CoverageTiler if self.tilefn=='coverage' else MaskTiler
+        self.tilemode = kwargs.pop('mode','coverage')
+        self.tiler    = CoverageTiler if self.tilemode=='coverage' else MaskTiler
         self.tilerkw  = kwargs
         
     def collect(self):
@@ -38,7 +37,9 @@ class RegionTiler(BaseTiler):
 
         ul = []
         for r in self.rclab:
-            tiler = self.tiler((self.rcomp==r),self.tiledim,**self.tilerkw)
+            tilerkw = (self.tilerkw).copy()
+            tiler = self.tiler((self.rcomp==r),self.tiledim,**tilerkw)
             ul.extend(tiler.collect())
         self.ul = ul
+        
         return self.ul

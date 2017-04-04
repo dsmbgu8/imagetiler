@@ -71,6 +71,10 @@ if __name__ == '__main__':
     image = loadfunc(imagef)
     mask  = maskfunc(image)
 
+    imggrid = bands2grid(image,1,orientation='square')
+    pl.imshow(imggrid.squeeze())
+    pl.show()
+    
     tiledir = pathjoin(tiledir,splitext(basename(imagef))[0])
     if not pathexists(tiledir):
         os.makedirs(tiledir)

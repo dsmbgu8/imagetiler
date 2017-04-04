@@ -10,15 +10,13 @@ class RectTiler(BaseTiler):
         conn=4: center tile + 4 quad offsets
         conn=8: center tile + 8 octal offsets
         '''
+        super(RectTiler,self).__init__(tiledim,**kwargs)
         self.rclab = kwargs.pop('rclab',np.unique(rcomp[rcomp!=0]))
         self.conn = kwargs.pop('conn',8)
         self.maskskip = kwargs.pop('mask',[])
         if len(self.maskskip) != 0:
-            self.maskskip = np.atleast_3d(self.maskskip)
-        
-        self.ul = []
+            self.maskskip = np.atleast_3d(self.maskskip)        
         self.rcomp = rcomp
-        self.tiledim = tiledim
 
     def collect(self):
         if self.ul != []:
@@ -33,18 +31,15 @@ class RectTiler(BaseTiler):
             
         ul = []
         for r in self.rclab:
-            c = np.uint32(map(np.mean,np.where(self.rcomp==r)))
-            print('lab',r,c)
-                         
+            c = np.uint32(map(np.mean,np.where(self.rcomp==r)))                         
             # get center tile
             cul = (c[0]-t2,c[1]-t2)
+            ul.append(cul)
             if len(self.maskskip)!=0:
                 tmask = extract_tile(self.maskskip,cul,self.tiledim)
                 if tmask.any():
                     print(cul,'overlaps',tmask.sum(),'masked pixels')
-                    continue   
-            
-            ul.append(cul)
+                    continue
 
             # get quad/octal offset tiles
             for ti in toff:
