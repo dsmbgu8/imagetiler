@@ -50,8 +50,7 @@ class MaskTiler(BaseTiler):
         # assign initial mask pixels + compute threshold
         self.maskskip  = np.uint32(mask==0) # 0=invalid pixel, so we should skip it
         self.maskseen  = self.maskskip.copy() # consider invalid pixels "seen"
-
-        print(self.accept,(self.maskskip.sum(),(nrows*ncols)))
+        self.masksum   = self.maskskip.copy() # consider invalid pixels "seen"
 
         self.strict = False
         if self.accept=='none':
@@ -59,7 +58,7 @@ class MaskTiler(BaseTiler):
             self.accept = 0.0
             self.strict = True
         elif self.accept=='mask':
-            self.accept = (float(self.maskskip.sum())/(nrows*ncols))
+            self.accept = (1.25*self.maskskip.sum())/(nrows*ncols)
         elif self.accept=='min':
             # 'min' -> tiles can only contain 1 overlapping pixel
             self.accept = 2.0/self.ntilepix
@@ -71,9 +70,13 @@ class MaskTiler(BaseTiler):
             if self.accept > 1:
                 self.accept = self.accept/100.0
 
-        self.maxseen   = int(self.accept*self.ntilepix)
-                
+        self.accept = np.clip(self.accept,0.0,1.0)
+        self.maxseen = int(self.accept*self.ntilepix)
+        
         print('accept: %5.2f%%'%(self.accept*100))
+        print('nmaskskip:',self.maskskip.sum(),'npix:',(nrows*ncols),
+              'maxseen:',self.maxseen)                
+                
         self.basestep = 1
         self.colstep = self.rowstep = self.basestep
         if self.nrows > self.ncols:
@@ -108,7 +111,7 @@ class MaskTiler(BaseTiler):
         # returns best tile slice and percent of unmasked pixels for best slice
         # (larger percentages=less overlap with previously-selected tiles)
         
-        tijbest,tijseen,tijover = None,self.ntilepix,self.ntilepix 
+        tijbest,tijseen,tijover = None,self.ntilepix,np.inf
 
         if len(self.pixr)==0 or len(self.tilei)==0:
             warn('no pixel offsets defined, cannot proceed')
@@ -146,7 +149,7 @@ class MaskTiler(BaseTiler):
                 tvals = self.maskseen[tij]
                 nseen = np.count_nonzero(tvals)
                 if nseen<tijseen or self.replacement:
-                    nover = tvals.max()
+                    nover = self.masksum[tij].max()
                     if nover<=tijover:
                         tijbest, tijseen, tijover = tij, nseen, nover
                         if nseen<=self.maxseen:
@@ -161,12 +164,12 @@ class MaskTiler(BaseTiler):
                     if self.verbose:
                         tcoverage = tijseen/self.ntilepix
                         msg = "Reinitializing mask (%6.3f%% coverage)"%tcoverage
-                        warn(msg)
+                        print(msg)
                     self.maskseen = self.maskskip.copy()
                     # pick a new offset to increase sampling diversity
                     r = self.pixr[randint(self.npixr)]
                     c = self.pixc[randint(self.npixc)]
-                    tijbest,tijseen,tijover = None,self.ntilepix,self.ntilepix
+                    tijbest,tijseen,tijover = None,self.ntilepix,np.inf
                     nsearch = 0
                     nreinit += 1
                     if nreinit > self.maxreinit:
@@ -176,6 +179,7 @@ class MaskTiler(BaseTiler):
                     # found a good tile, mask if sampling wo replacement
                     if not self.replacement:
                         self.maskseen[tijbest] += 1
+                        self.masksum[tijbest] += 1
                     nreinit = 0 # we can reinit again if we found a good tile
                     break
 
