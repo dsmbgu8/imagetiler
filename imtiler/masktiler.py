@@ -2,11 +2,11 @@ from __future__ import absolute_import, print_function, division
 
 from .util import *
 from .basetiler import *
-from numpy.random import randint
+from numpy.random import randint, choice
         
 class MaskTiler(BaseTiler):
     """
-    MaskTiler(mask,tiledim,numtiles,maxsearch=1000,accept=0.5,reinit_mask=True,
+    MaskTiler(mask,tiledim,numtiles,maxsearch=1000,accept=0.5,reinit_seen=True,
               replacement=False,verbose=False)
     
     Summary: generates randomly selected tiledim x tiledim subtiles given
@@ -30,7 +30,7 @@ class MaskTiler(BaseTiler):
         self.numtiles    = kwargs.pop('numtiles',MIN_TILES)
         self.maxsearch   = kwargs.pop('maxsearch',1000)
         self.replacement = kwargs.pop('replacement',False)
-        self.reinit_mask = kwargs.pop('reinit_mask',True)
+        self.reinit_seen = kwargs.pop('reinit_mask',True)
         self.accept      = kwargs.pop('accept',0.5)        
         self.verbose     = kwargs.pop('verbose',False)
         self.maxreinit   = kwargs.pop('maxreinit',10)
@@ -50,7 +50,7 @@ class MaskTiler(BaseTiler):
         # assign initial mask pixels + compute threshold
         self.maskskip  = np.uint32(mask==0) # 0=invalid pixel, so we should skip it
         self.maskseen  = self.maskskip.copy() # consider invalid pixels "seen"
-        self.masksum   = self.maskskip.copy() # consider invalid pixels "seen"
+        self.masksum   = self.maskskip.copy() # keep track of visits
 
         self.strict = False
         if self.accept=='none':
@@ -123,8 +123,7 @@ class MaskTiler(BaseTiler):
         # pick a random row/col pixel offset from our seen pixel list
         #pixrc  = list(self.pixrc)
         #r,c = pixrc.pop(randint(len(pixrc)))
-        r = self.pixr[randint(self.npixr)]
-        c = self.pixc[randint(self.npixc)]
+        r,c = choice(self.pixr),choice(self.pixc)
         while nsearch <= self.maxsearch:
             #tilei,tilej = list(self.tilei),list(self.tilej)
             # search tiles in random order for current pixel offset
@@ -132,8 +131,7 @@ class MaskTiler(BaseTiler):
                 if len(self.visited)==self.ntileij*self.npixrc:
                     self.visited = set([])                
                 #ti,tj = tileij.pop(randint(len(tileij)))
-                ti = self.tilei[randint(self.ntilei)]
-                tj = self.tilej[randint(self.ntilej)]
+                ti,tj = choice(self.tilei),choice(self.tilej)
                 i,j = (ti*self.tiledim)+r,(tj*self.tiledim)+c
                 if (i,j) in self.visited or i+self.tiledim>=self.nrows or \
                    j+self.tiledim>=self.ncols:
@@ -160,15 +158,15 @@ class MaskTiler(BaseTiler):
             # found an acceptable tile or all pixels masked inseen (reset or exit)
             if nsearch>=self.maxsearch:                                                
                 # reset mask if our best tile is covered by more than maxseen
-                if self.reinit_mask and tijseen>self.maxseen:
+                if self.reinit_seen and tijseen>self.maxseen:
                     if self.verbose:
                         tcoverage = tijseen/self.ntilepix
                         msg = "Reinitializing mask (%6.3f%% coverage)"%tcoverage
                         print(msg)
                     self.maskseen = self.maskskip.copy()
                     # pick a new offset to increase sampling diversity
-                    r = self.pixr[randint(self.npixr)]
-                    c = self.pixc[randint(self.npixc)]
+                    r,c = choice(self.pixr),choice(self.pixc)
+
                     tijbest,tijseen,tijover = None,self.ntilepix,np.inf
                     nsearch = 0
                     nreinit += 1
@@ -185,11 +183,9 @@ class MaskTiler(BaseTiler):
 
             # randomly increment either the row or the column, but not both
             if randint(2)==1:
-                rr = self.tilei[randint(self.ntilei)]
-                r = (r+rr)%self.rowdim
+                r = (r+choice(self.tilei))%self.rowdim
             else:
-                cc = self.tilej[randint(self.ntilej)]
-                c = (c+cc)%self.coldim
+                c = (c+choice(self.tilej))%self.coldim
                 
             # keep track of searches to avoid infinite loop
             nsearch += 1
